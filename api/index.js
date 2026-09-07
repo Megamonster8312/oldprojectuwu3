@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+export const config = {
+  runtime: "edge",
+};
 
-export const dynamic = "force-dynamic";
-
-async function handleProxy(request: NextRequest): Promise<Response> {
+export default async function handler(request) {
   const incomingUrl = new URL(request.url);
 
   // Construct target upstream URL
@@ -15,9 +15,11 @@ async function handleProxy(request: NextRequest): Promise<Response> {
   const forwardHeaders = new Headers(request.headers);
   forwardHeaders.set("Host", upstreamUrl.host);
 
+  // Strip hop-by-hop headers before forwarding
   forwardHeaders.delete("connection");
   forwardHeaders.delete("content-length");
 
+  // Determine if the incoming request includes a body
   const methodsWithNoBody = ["GET", "HEAD"];
   const hasBody = !methodsWithNoBody.includes(request.method) && request.body !== null;
 
@@ -30,7 +32,7 @@ async function handleProxy(request: NextRequest): Promise<Response> {
       cache: "no-store",
     });
 
-    // Handle redirects to avoid loops and rewrite location
+    // Handle redirects to prevent loops and rewrite location back to this host
     if ([301, 302, 303, 307, 308].includes(upstreamResponse.status)) {
       let location = upstreamResponse.headers.get("Location");
 
@@ -47,7 +49,7 @@ async function handleProxy(request: NextRequest): Promise<Response> {
         const redirectHeaders = new Headers(upstreamResponse.headers);
         redirectHeaders.set("Location", location);
 
-        return new NextResponse(upstreamResponse.body, {
+        return new Response(upstreamResponse.body, {
           status: upstreamResponse.status,
           statusText: upstreamResponse.statusText,
           headers: redirectHeaders,
@@ -55,21 +57,14 @@ async function handleProxy(request: NextRequest): Promise<Response> {
       }
     }
 
-    return new NextResponse(upstreamResponse.body, {
+    // Forward the standard upstream response directly
+    return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,
       statusText: upstreamResponse.statusText,
       headers: upstreamResponse.headers,
     });
-  } catch (error: unknown) {
+  } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    return new NextResponse(`Proxy Error: ${message}`, { status: 502 });
+    return new Response(`Proxy Error: ${message}`, { status: 502 });
   }
 }
-
-export const GET = handleProxy;
-export const POST = handleProxy;
-export const PUT = handleProxy;
-export const PATCH = handleProxy;
-export const DELETE = handleProxy;
-export const HEAD = handleProxy;
-export const OPTIONS = handleProxy;
