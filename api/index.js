@@ -1,8 +1,4 @@
-export const config = {
-  runtime: "edge",
-};
-
-export default async function handler(request) {
+Deno.serve(async (request) => {
   const incomingUrl = new URL(request.url);
 
   // Construct target upstream URL
@@ -15,7 +11,7 @@ export default async function handler(request) {
   const forwardHeaders = new Headers(request.headers);
   forwardHeaders.set("Host", upstreamUrl.host);
 
-  // Strip hop-by-hop headers before forwarding
+  // Strip hop-by-hop headers
   forwardHeaders.delete("connection");
   forwardHeaders.delete("content-length");
 
@@ -29,10 +25,9 @@ export default async function handler(request) {
       headers: forwardHeaders,
       body: hasBody ? request.body : undefined,
       redirect: "manual",
-      cache: "no-store",
     });
 
-    // Handle redirects to prevent loops and rewrite location back to this host
+    // Handle response redirects to prevent loops and rewrite location to match incoming host
     if ([301, 302, 303, 307, 308].includes(upstreamResponse.status)) {
       let location = upstreamResponse.headers.get("Location");
 
@@ -67,4 +62,4 @@ export default async function handler(request) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(`Proxy Error: ${message}`, { status: 502 });
   }
-}
+});
